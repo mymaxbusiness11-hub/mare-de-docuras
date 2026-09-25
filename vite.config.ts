@@ -8,6 +8,6 @@ export default defineConfig({
     tailwindcss(),
   ],
   build: {
-    minify: "esbuild",
+    cssMinify: false,
   },
 });

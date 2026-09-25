@@ -14,6 +14,15 @@ type Product = {
   sort_order: number;
 };
 
+type ProductOption = {
+  id: number;
+  product_id: number;
+  name: string;
+  type: string;
+  price_delta: number;
+  available: boolean;
+};
+
 export default function Admin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,24 +35,16 @@ export default function Admin() {
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-const [creatingProduct, setCreatingProduct] = useState(false);
-type ProductOption = {
-  id: number;
-  product_id: number;
-  name: string;
-  type: string;
-  price_delta: number;
-  available: boolean;
-};
+  const [creatingProduct, setCreatingProduct] = useState(false);
 
-const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-const [loadingOptions, setLoadingOptions] = useState(false);
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
-const [addingOption, setAddingOption] = useState(false);
-const [newOptionName, setNewOptionName] = useState("");
-const [newOptionType, setNewOptionType] = useState("flavor");
-const [newOptionPrice, setNewOptionPrice] = useState(0);
-const [editingOptionId, setEditingOptionId] = useState<number | null>(null);
+  const [addingOption, setAddingOption] = useState(false);
+  const [newOptionName, setNewOptionName] = useState("");
+  const [newOptionType, setNewOptionType] = useState("flavor");
+  const [newOptionPrice, setNewOptionPrice] = useState(0);
+  const [editingOptionId, setEditingOptionId] = useState<number | null>(null);
 
   useEffect(() => {
     checkSession();
@@ -115,15 +116,47 @@ const [editingOptionId, setEditingOptionId] = useState<number | null>(null);
     setLoggedIn(true);
     setLoading(false);
   }
-async function saveProduct() {
-  if (!editingProduct) return;
 
-  setLoadingProducts(true);
-  setError("");
-  if (creatingProduct) {
+  async function saveProduct() {
+    if (!editingProduct) return;
+
+    setLoadingProducts(true);
+    setError("");
+
+    if (creatingProduct) {
+      const { data, error } = await supabase
+        .from("products")
+        .insert({
+          name: editingProduct.name,
+          description: editingProduct.description,
+          price: editingProduct.price,
+          image_url: editingProduct.image_url,
+          category: editingProduct.category,
+          tag: editingProduct.tag,
+          sold_out: editingProduct.sold_out,
+          featured: editingProduct.featured,
+          sort_order: editingProduct.sort_order,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error(error);
+        setError("Não foi possível criar o produto.");
+        setLoadingProducts(false);
+        return;
+      }
+
+      setProducts((currentProducts) => [...currentProducts, data]);
+      setEditingProduct(null);
+      setCreatingProduct(false);
+      setLoadingProducts(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("products")
-      .insert({
+      .update({
         name: editingProduct.name,
         description: editingProduct.description,
         price: editingProduct.price,
@@ -132,58 +165,77 @@ async function saveProduct() {
         tag: editingProduct.tag,
         sold_out: editingProduct.sold_out,
         featured: editingProduct.featured,
-        sort_order: editingProduct.sort_order,
       })
+      .eq("id", editingProduct.id)
       .select()
       .single();
 
     if (error) {
       console.error(error);
-      setError("Não foi possível criar o produto.");
+      setError("Não foi possível salvar as alterações.");
       setLoadingProducts(false);
       return;
     }
 
-    setProducts((currentProducts) => [...currentProducts, data]);
+    setProducts((currentProducts) =>
+      currentProducts.map((product) =>
+        product.id === data.id ? data : product
+      )
+    );
+
     setEditingProduct(null);
-    setCreatingProduct(false);
     setLoadingProducts(false);
-    return;
   }
 
-  const { data, error } = await supabase
-    .from("products")
-    .update({
-      name: editingProduct.name,
-      description: editingProduct.description,
-      price: editingProduct.price,
-      image_url: editingProduct.image_url,
-      category: editingProduct.category,
-      tag: editingProduct.tag,
-      sold_out: editingProduct.sold_out,
-      featured: editingProduct.featured,
-    })
-    .eq("id", editingProduct.id)
-    .select()
-    .single();
+  async function deleteProduct(product: Product) {
+    const confirmed = window.confirm(
+      `Excluir "${product.name}"?\n\nEssa ação excluirá o produto e todos os sabores/adicionais vinculados a ele.`
+    );
 
-  if (error) {
-    console.error(error);
-    setError("Não foi possível salvar as alterações.");
+    if (!confirmed) return;
+
+    setError("");
+    setLoadingProducts(true);
+
+    const { error: optionsError } = await supabase
+      .from("product_options")
+      .delete()
+      .eq("product_id", product.id);
+
+    if (optionsError) {
+      console.error(optionsError);
+      setError("Não foi possível excluir os sabores e adicionais do produto.");
+      setLoadingProducts(false);
+      return;
+    }
+
+    const { error: productError } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", product.id);
+
+    if (productError) {
+      console.error(productError);
+      setError("Não foi possível excluir o produto.");
+      setLoadingProducts(false);
+      return;
+    }
+
+    setProducts((currentProducts) =>
+      currentProducts.filter(
+        (currentProduct) => currentProduct.id !== product.id
+      )
+    );
+
+    if (editingProduct?.id === product.id) {
+      setEditingProduct(null);
+      setCreatingProduct(false);
+      setProductOptions([]);
+    }
+
     setLoadingProducts(false);
-    return;
   }
 
-  setProducts((currentProducts) =>
-    currentProducts.map((product) =>
-      product.id === data.id ? data : product
-    )
-  );
-
-  setEditingProduct(null);
-  setLoadingProducts(false);
-  
-}
   async function handleLogout() {
     await supabase.auth.signOut();
 
@@ -194,49 +246,58 @@ async function saveProduct() {
     setEditingProduct(null);
   }
 
- async function openEdit(product: Product) {
-  setEditingProduct({ ...product });
-  setCreatingProduct(false);
+  async function openEdit(product: Product) {
+    setEditingProduct({ ...product });
+    setCreatingProduct(false);
 
-  setLoadingOptions(true);
+    setLoadingOptions(true);
 
-  const { data, error } = await supabase
-    .from("product_options")
-    .select("*")
-    .eq("product_id", product.id)
-    .order("id", { ascending: true });
+    const { data, error } = await supabase
+      .from("product_options")
+      .select("*")
+      .eq("product_id", product.id)
+      .order("id", { ascending: true });
 
-  if (error) {
-    console.error(error);
-    setError("Não foi possível carregar os sabores e adicionais.");
+    if (error) {
+      console.error(error);
+      setError("Não foi possível carregar os sabores e adicionais.");
+      setProductOptions([]);
+    } else {
+      setProductOptions(data || []);
+    }
+
+    setLoadingOptions(false);
+  }
+
+  function openCreate() {
+    setCreatingProduct(true);
+
+    setEditingProduct({
+      id: 0,
+      name: "",
+      description: "",
+      price: 0,
+      image_url: "",
+      category: "",
+      tag: "",
+      sold_out: false,
+      featured: false,
+      sort_order: products.length + 1,
+    });
+
     setProductOptions([]);
-  } else {
-    setProductOptions(data || []);
   }
 
-  setLoadingOptions(false);
+  function closeEdit() {
+    setEditingProduct(null);
+    setCreatingProduct(false);
+    setProductOptions([]);
+    setAddingOption(false);
+    setEditingOptionId(null);
+    setNewOptionName("");
+    setNewOptionType("flavor");
+    setNewOptionPrice(0);
   }
-function openCreate() {
-  setCreatingProduct(true);
-
-  setEditingProduct({
-    id: 0,
-    name: "",
-    description: "",
-    price: 0,
-    image_url: "",
-    category: "",
-    tag: "",
-    sold_out: false,
-    featured: false,
-    sort_order: products.length + 1,
-  });
-}
-function closeEdit() {
-  setEditingProduct(null);
-  setCreatingProduct(false);
-  setProductOptions([]);
-}
 
   function updateEditingProduct(
     field: keyof Product,
@@ -262,9 +323,7 @@ function closeEdit() {
     return (
       <div className="min-h-screen bg-[#fffaf5] px-4 py-8">
         <div className="max-w-6xl mx-auto">
-
           <div className="bg-white rounded-3xl shadow-lg p-8">
-
             <div className="flex items-center justify-between gap-4 mb-8">
               <div>
                 <p className="text-sm text-[#e58b9c] font-semibold">
@@ -290,20 +349,19 @@ function closeEdit() {
 
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-xl font-bold text-[#333]">
-                  Produtos
-                </h2>
+                <h2 className="text-xl font-bold text-[#333]">Produtos</h2>
 
                 <p className="text-sm text-gray-500">
                   {products.length} produto(s) cadastrado(s)
                 </p>
               </div>
-<button
-  onClick={openCreate}
-  className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 font-semibold hover:opacity-90 transition"
->
-  + Novo produto
-</button>
+
+              <button
+                onClick={openCreate}
+                className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 font-semibold hover:opacity-90 transition"
+              >
+                + Novo produto
+              </button>
             </div>
 
             {error && (
@@ -375,30 +433,36 @@ function closeEdit() {
                       </p>
                     </div>
 
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => openEdit(product)}
                         className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
                       >
                         Editar
                       </button>
+
+                      <button
+                        onClick={() => deleteProduct(product)}
+                        disabled={loadingProducts}
+                        className="rounded-xl bg-red-50 text-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-100 transition disabled:opacity-50"
+                      >
+                        Excluir
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-
           </div>
 
           {editingProduct && (
             <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4 py-6">
               <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl p-6 sm:p-8">
-
                 <div className="flex items-start justify-between gap-4 mb-6">
                   <div>
                     <p className="text-sm text-[#e58b9c] font-semibold">
-  {creatingProduct ? "Novo produto" : "Editando produto"}
-</p>
+                      {creatingProduct ? "Novo produto" : "Editando produto"}
+                    </p>
 
                     <h2 className="text-2xl font-bold text-[#333] mt-1">
                       {editingProduct.name}
@@ -414,355 +478,379 @@ function closeEdit() {
                 </div>
 
                 <div className="space-y-5">
-{!creatingProduct && (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-lg font-bold text-[#333]">
-        Sabores e adicionais
-      </h3>
+                  {!creatingProduct && (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-[#333]">
+                          Sabores e adicionais
+                        </h3>
 
-      <p className="text-sm text-gray-500 mt-1">
-        Opções cadastradas para este produto.
-      </p>
-<button
-  type="button"
- onClick={() => {
-  setAddingOption(true);
-  setNewOptionName("");
-  setNewOptionType("flavor");
-  setNewOptionPrice(0);
-}}
-  className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
->
-  + Adicionar sabor/adicional
-</button>
-{addingOption && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Opções cadastradas para este produto.
+                        </p>
+                      </div>
 
-  <div className="mt-4 rounded-2xl border border-gray-100 bg-[#fffaf5] p-4 space-y-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddingOption(true);
+                          setNewOptionName("");
+                          setNewOptionType("flavor");
+                          setNewOptionPrice(0);
+                        }}
+                        className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+                      >
+                        + Adicionar sabor/adicional
+                      </button>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Nome
-      </label>
+                      {addingOption && (
+                        <div className="mt-4 rounded-2xl border border-gray-100 bg-[#fffaf5] p-4 space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Nome
+                            </label>
 
-      <input
-        type="text"
-        value={newOptionName}
-        onChange={(e) => setNewOptionName(e.target.value)}
-        placeholder="Ex.: Chocolate"
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      />
-    </div>
+                            <input
+                              type="text"
+                              value={newOptionName}
+                              onChange={(e) =>
+                                setNewOptionName(e.target.value)
+                              }
+                              placeholder="Ex.: Chocolate"
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            />
+                          </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Tipo
-      </label>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Tipo
+                            </label>
 
-      <select
-        value={newOptionType}
-        onChange={(e) => setNewOptionType(e.target.value)}
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      >
-        <option value="flavor">Sabor</option>
-        <option value="addon">Adicional</option>
-      </select>
-    </div>
+                            <select
+                              value={newOptionType}
+                              onChange={(e) =>
+                                setNewOptionType(e.target.value)
+                              }
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            >
+                              <option value="flavor">Sabor</option>
+                              <option value="addon">Adicional</option>
+                            </select>
+                          </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Acréscimo no preço
-      </label>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Acréscimo no preço
+                            </label>
 
-      <input
-        type="number"
-        step="0.01"
-        min="0"
-        value={newOptionPrice}
-        onChange={(e) => setNewOptionPrice(Number(e.target.value))}
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      />
-    </div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={newOptionPrice}
+                              onChange={(e) =>
+                                setNewOptionPrice(Number(e.target.value))
+                              }
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            />
+                          </div>
 
-    <div className="flex gap-2">
-      <button
-  type="button"
-  onClick={async () => {
-    if (!newOptionName.trim()) {
-      setError("Digite o nome do sabor ou adicional.");
-      return;
-    }
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!newOptionName.trim()) {
+                                  setError(
+                                    "Digite o nome do sabor ou adicional."
+                                  );
+                                  return;
+                                }
 
-    if (!editingProduct || creatingProduct) return;
+                                if (!editingProduct || creatingProduct) return;
 
-    setError("");
+                                setError("");
 
-    const { data, error } = await supabase
-      .from("product_options")
-      .insert({
-        product_id: editingProduct.id,
-        name: newOptionName.trim(),
-        type: newOptionType,
-        price_delta: newOptionPrice,
-        available: true,
-      })
-      .select()
-      .single();
+                                const { data, error } = await supabase
+                                  .from("product_options")
+                                  .insert({
+                                    product_id: editingProduct.id,
+                                    name: newOptionName.trim(),
+                                    type: newOptionType,
+                                    price_delta: newOptionPrice,
+                                    available: true,
+                                  })
+                                  .select()
+                                  .single();
 
-    if (error) {
-      console.error(error);
-      setError("Não foi possível cadastrar a opção.");
-      return;
-    }
+                                if (error) {
+                                  console.error(error);
+                                  setError(
+                                    "Não foi possível cadastrar a opção."
+                                  );
+                                  return;
+                                }
 
-    setProductOptions((currentOptions) => [
-      ...currentOptions,
-      data,
-    ]);
+                                setProductOptions((currentOptions) => [
+                                  ...currentOptions,
+                                  data,
+                                ]);
 
-    setNewOptionName("");
-    setNewOptionType("flavor");
-    setNewOptionPrice(0);
-    setAddingOption(false);
-  }}
-  className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
->
-  Salvar opção
-</button>
-    </div>
+                                setNewOptionName("");
+                                setNewOptionType("flavor");
+                                setNewOptionPrice(0);
+                                setAddingOption(false);
+                              }}
+                              className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+                            >
+                              Salvar opção
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-    </div>
-)}
+                      {editingOptionId !== null && (
+                        <div className="mt-4 rounded-2xl border border-gray-100 bg-[#fffaf5] p-4 space-y-4">
+                          <div>
+                            <h4 className="font-bold text-gray-800">
+                              Editar sabor/adicional
+                            </h4>
 
-{editingOptionId !== null && (
-  <div className="mt-4 rounded-2xl border border-gray-100 bg-[#fffaf5] p-4 space-y-4">
+                            <p className="text-sm text-gray-500 mt-1">
+                              Altere os dados desta opção.
+                            </p>
+                          </div>
 
-    <div>
-      <h4 className="font-bold text-gray-800">
-        Editar sabor/adicional
-      </h4>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Nome
+                            </label>
 
-      <p className="text-sm text-gray-500 mt-1">
-        Altere os dados desta opção.
-      </p>
-    </div>
+                            <input
+                              type="text"
+                              value={newOptionName}
+                              onChange={(e) =>
+                                setNewOptionName(e.target.value)
+                              }
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            />
+                          </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Nome
-      </label>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Tipo
+                            </label>
 
-      <input
-        type="text"
-        value={newOptionName}
-        onChange={(e) => setNewOptionName(e.target.value)}
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      />
-    </div>
+                            <select
+                              value={newOptionType}
+                              onChange={(e) =>
+                                setNewOptionType(e.target.value)
+                              }
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            >
+                              <option value="flavor">Sabor</option>
+                              <option value="addon">Adicional</option>
+                            </select>
+                          </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Tipo
-      </label>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Acréscimo no preço
+                            </label>
 
-      <select
-        value={newOptionType}
-        onChange={(e) => setNewOptionType(e.target.value)}
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      >
-        <option value="flavor">Sabor</option>
-        <option value="addon">Adicional</option>
-      </select>
-    </div>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={newOptionPrice}
+                              onChange={(e) =>
+                                setNewOptionPrice(Number(e.target.value))
+                              }
+                              className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
+                            />
+                          </div>
 
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Acréscimo no preço
-      </label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!newOptionName.trim()) {
+                                  setError(
+                                    "Digite o nome do sabor ou adicional."
+                                  );
+                                  return;
+                                }
 
-      <input
-        type="number"
-        step="0.01"
-        min="0"
-        value={newOptionPrice}
-        onChange={(e) => setNewOptionPrice(Number(e.target.value))}
-        className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
-      />
-    </div>
+                                if (editingOptionId === null) return;
 
-    <div className="flex gap-2">
+                                setError("");
 
-     <button
-  type="button"
-  onClick={async () => {
-    if (!newOptionName.trim()) {
-      setError("Digite o nome do sabor ou adicional.");
-      return;
-    }
+                                const { data, error } = await supabase
+                                  .from("product_options")
+                                  .update({
+                                    name: newOptionName.trim(),
+                                    type: newOptionType,
+                                    price_delta: newOptionPrice,
+                                  })
+                                  .eq("id", editingOptionId)
+                                  .select()
+                                  .single();
 
-    if (editingOptionId === null) return;
+                                if (error) {
+                                  console.error(error);
+                                  setError(
+                                    "Não foi possível salvar a alteração."
+                                  );
+                                  return;
+                                }
 
-    setError("");
+                                setProductOptions((currentOptions) =>
+                                  currentOptions.map((option) =>
+                                    option.id === data.id ? data : option
+                                  )
+                                );
 
-    const { data, error } = await supabase
-      .from("product_options")
-      .update({
-        name: newOptionName.trim(),
-        type: newOptionType,
-        price_delta: newOptionPrice,
-      })
-      .eq("id", editingOptionId)
-      .select()
-      .single();
+                                setEditingOptionId(null);
+                                setNewOptionName("");
+                                setNewOptionType("flavor");
+                                setNewOptionPrice(0);
+                              }}
+                              className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
+                            >
+                              Salvar alteração
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
-    if (error) {
-      console.error(error);
-      setError("Não foi possível salvar a alteração.");
-      return;
-    }
+                      {loadingOptions ? (
+                        <div className="rounded-2xl border border-gray-100 p-4 text-sm text-gray-500">
+                          Carregando opções...
+                        </div>
+                      ) : productOptions.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-200 p-4 text-sm text-gray-500">
+                          Nenhum sabor ou adicional cadastrado.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {productOptions.map((option) => (
+                            <div
+                              key={option.id}
+                              className="rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4"
+                            >
+                              <div>
+                                <p className="font-medium text-gray-800">
+                                  {option.name}
+                                </p>
 
-    setProductOptions((currentOptions) =>
-      currentOptions.map((option) =>
-        option.id === data.id ? data : option
-      )
-    );
+                                <p className="text-sm text-gray-500">
+                                  {option.type === "flavor"
+                                    ? "Sabor"
+                                    : "Adicional"}
+                                  {Number(option.price_delta) > 0
+                                    ? ` • +R$ ${Number(option.price_delta)
+                                        .toFixed(2)
+                                        .replace(".", ",")}`
+                                    : ""}
+                                </p>
+                              </div>
 
-    setEditingOptionId(null);
-    setNewOptionName("");
-    setNewOptionType("flavor");
-    setNewOptionPrice(0);
-  }}
-  className="rounded-xl bg-[#e58b9c] text-white px-4 py-2 text-sm font-semibold hover:opacity-90 transition"
->
-  Salvar alteração
-</button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingOptionId(option.id);
+                                    setNewOptionName(option.name);
+                                    setNewOptionType(option.type);
+                                    setNewOptionPrice(
+                                      Number(option.price_delta)
+                                    );
+                                    setAddingOption(false);
+                                  }}
+                                  className="text-xs font-semibold px-3 py-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
+                                >
+                                  Editar
+                                </button>
 
-    </div>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const { error } = await supabase
+                                      .from("product_options")
+                                      .update({
+                                        available: !option.available,
+                                      })
+                                      .eq("id", option.id);
 
-  </div>
-)}
+                                    if (error) {
+                                      console.error(error);
+                                      setError(
+                                        "Não foi possível alterar a disponibilidade."
+                                      );
+                                      return;
+                                    }
 
-    </div>
+                                    setProductOptions((currentOptions) =>
+                                      currentOptions.map((currentOption) =>
+                                        currentOption.id === option.id
+                                          ? {
+                                              ...currentOption,
+                                              available: !option.available,
+                                            }
+                                          : currentOption
+                                      )
+                                    );
+                                  }}
+                                  className={`text-xs font-semibold px-3 py-2 rounded-full transition ${
+                                    option.available
+                                      ? "bg-green-50 text-green-600 hover:bg-green-100"
+                                      : "bg-red-50 text-red-600 hover:bg-red-100"
+                                  }`}
+                                >
+                                  {option.available
+                                    ? "Disponível"
+                                    : "Indisponível"}
+                                </button>
 
-    {loadingOptions ? (
-      <div className="rounded-2xl border border-gray-100 p-4 text-sm text-gray-500">
-        Carregando opções...
-      </div>
-    ) : productOptions.length === 0 ? (
-      <div className="rounded-2xl border border-dashed border-gray-200 p-4 text-sm text-gray-500">
-        Nenhum sabor ou adicional cadastrado.
-      </div>
-    ) : (
-      <div className="space-y-2">
-        {productOptions.map((option) => (
-          <div
-            key={option.id}
-            className="rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4"
-          >
-            <div>
-              <p className="font-medium text-gray-800">
-                {option.name}
-              </p>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const confirmed = window.confirm(
+                                      `Excluir "${option.name}"?`
+                                    );
 
-              <p className="text-sm text-gray-500">
-                {option.type === "flavor"
-                  ? "Sabor"
-                  : "Adicional"}
-                {Number(option.price_delta) > 0
-                  ? ` • +R$ ${Number(option.price_delta)
-                      .toFixed(2)
-                      .replace(".", ",")}`
-                  : ""}
-              </p>
-            </div>
+                                    if (!confirmed) return;
 
-           <div className="flex items-center gap-2">
-<button
-  type="button"
-  onClick={() => {
-    setEditingOptionId(option.id);
-    setNewOptionName(option.name);
-    setNewOptionType(option.type);
-    setNewOptionPrice(Number(option.price_delta));
-    setAddingOption(false);
-  }}
-  className="text-xs font-semibold px-3 py-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
->
-  Editar
-</button>
-  <button
-    type="button"
-    onClick={async () => {
-      const { error } = await supabase
-        .from("product_options")
-        .update({
-          available: !option.available,
-        })
-        .eq("id", option.id);
+                                    const { error } = await supabase
+                                      .from("product_options")
+                                      .delete()
+                                      .eq("id", option.id);
 
-      if (error) {
-        console.error(error);
-        setError("Não foi possível alterar a disponibilidade.");
-        return;
-      }
+                                    if (error) {
+                                      console.error(error);
+                                      setError(
+                                        "Não foi possível excluir a opção."
+                                      );
+                                      return;
+                                    }
 
-      setProductOptions((currentOptions) =>
-        currentOptions.map((currentOption) =>
-          currentOption.id === option.id
-            ? {
-                ...currentOption,
-                available: !option.available,
-              }
-            : currentOption
-        )
-      );
-    }}
-    className={`text-xs font-semibold px-3 py-2 rounded-full transition ${
-      option.available
-        ? "bg-green-50 text-green-600 hover:bg-green-100"
-        : "bg-red-50 text-red-600 hover:bg-red-100"
-    }`}
-    >
-    {option.available ? "Disponível" : "Indisponível"}
-  </button>
-
-  <button
-  type="button"
-  onClick={async () => {
-    const confirmed = window.confirm(
-      `Excluir "${option.name}"?`
-    );
-
-    if (!confirmed) return;
-
-    const { error } = await supabase
-      .from("product_options")
-      .delete()
-      .eq("id", option.id);
-
-    if (error) {
-      console.error(error);
-      setError("Não foi possível excluir a opção.");
-      return;
-    }
-
-    setProductOptions((currentOptions) =>
-      currentOptions.filter(
-        (currentOption) => currentOption.id !== option.id
-      )
-    );
-  }}
-  className="text-xs font-semibold px-3 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
->
-  Excluir
-</button>
-</div>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-)}
+                                    setProductOptions((currentOptions) =>
+                                      currentOptions.filter(
+                                        (currentOption) =>
+                                          currentOption.id !== option.id
+                                      )
+                                    );
+                                  }}
+                                  className="text-xs font-semibold px-3 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                                >
+                                  Excluir
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -795,7 +883,6 @@ function closeEdit() {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Preço
@@ -830,7 +917,6 @@ function closeEdit() {
                         className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-[#e58b9c]"
                       />
                     </div>
-
                   </div>
 
                   <div>
@@ -880,7 +966,6 @@ function closeEdit() {
                   )}
 
                   <div className="space-y-3">
-
                     <label className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 p-4 cursor-pointer">
                       <div>
                         <p className="font-medium text-gray-800">
@@ -928,13 +1013,10 @@ function closeEdit() {
                         className="w-5 h-5 accent-[#e58b9c]"
                       />
                     </label>
-
                   </div>
-
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-8">
-
                   <button
                     onClick={closeEdit}
                     className="rounded-xl border border-gray-200 px-5 py-3 font-semibold text-gray-700 hover:bg-gray-50 transition"
@@ -942,25 +1024,23 @@ function closeEdit() {
                     Cancelar
                   </button>
 
-                 <button
-  onClick={saveProduct}
-  disabled={loadingProducts}
-  className="rounded-xl bg-[#e58b9c] text-white px-5 py-3 font-semibold hover:opacity-90 transition disabled:opacity-50"
->
- {loadingProducts
-  ? creatingProduct
-    ? "Cadastrando..."
-    : "Salvando..."
-  : creatingProduct
-    ? "Cadastrar produto"
-    : "Salvar alterações"}
-</button>
+                  <button
+                    onClick={saveProduct}
+                    disabled={loadingProducts}
+                    className="rounded-xl bg-[#e58b9c] text-white px-5 py-3 font-semibold hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    {loadingProducts
+                      ? creatingProduct
+                        ? "Cadastrando..."
+                        : "Salvando..."
+                      : creatingProduct
+                        ? "Cadastrar produto"
+                        : "Salvar alterações"}
+                  </button>
                 </div>
-
               </div>
             </div>
           )}
-
         </div>
       </div>
     );
@@ -969,7 +1049,6 @@ function closeEdit() {
   return (
     <div className="min-h-screen bg-[#fffaf5] flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-lg p-8">
-
         <div className="text-center mb-8">
           <p className="text-sm text-[#e58b9c] font-semibold mb-2">
             Maré de Doçuras
@@ -985,7 +1064,6 @@ function closeEdit() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               E-mail
@@ -1017,9 +1095,7 @@ function closeEdit() {
           </div>
 
           {error && (
-            <p className="text-sm text-red-500 text-center">
-              {error}
-            </p>
+            <p className="text-sm text-red-500 text-center">{error}</p>
           )}
 
           <button
@@ -1029,7 +1105,6 @@ function closeEdit() {
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
-
         </form>
       </div>
     </div>

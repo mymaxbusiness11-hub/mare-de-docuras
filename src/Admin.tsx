@@ -785,19 +785,16 @@ export default function Admin() {
   }
 
   function printOrder(orderId: number) {
-    setPrintingOrderId(orderId);
+  setPrintingOrderId(orderId);
 
-    const endpoint =
-      "https://povhzhjgzywfixffydwg.supabase.co/functions/v1/quick-endpoint";
+  const url = `mareprint://print?order_id=${orderId}`;
 
-    const url = `bprint://${endpoint}?order_id=${orderId}`;
+  window.location.href = url;
 
-    window.location.href = url;
-
-    setTimeout(() => {
-      setPrintingOrderId(null);
-    }, 2000);
-  }
+  setTimeout(() => {
+    setPrintingOrderId(null);
+  }, 2000);
+}
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) =>

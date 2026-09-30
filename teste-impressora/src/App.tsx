@@ -1077,8 +1077,9 @@ function App() {
         }
       )
 
-      // --------------------------------------------------------
+            // --------------------------------------------------------
       // VALORES
+      // --------------------------------------------------------
 
       const subtotal = pedidoAtual.itens.reduce(
         (soma, item) =>
@@ -1099,18 +1100,18 @@ function App() {
         : 0
 
       texto +=
-        '------------------------------\\r\\n'
+        '------------------------------\r\n'
 
       texto +=
         `Subtotal: R$ ${dinheiro(
           subtotal
-        )}\\r\\n`
+        )}\r\n`
 
       if (ehEntrega) {
         texto +=
           `Entrega: R$ ${dinheiro(
             entrega
-          )}\\r\\n`
+          )}\r\n`
       }
 
       texto +=
@@ -1119,16 +1120,16 @@ function App() {
       texto +=
         `TOTAL: R$ ${dinheiro(
           pedidoAtual.total
-        )}\\r\\n`
+        )}\r\n`
 
       texto +=
         NEGRITO_OFF
 
       texto +=
-        '------------------------------\\r\\n'
+        '------------------------------\r\n'
 
       texto +=
-        '\\r\\n'
+        '\r\n'
 
       return texto
     }

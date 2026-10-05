@@ -6,7 +6,7 @@ import boloAniversario from "./imports/IMG_7342.jpeg";
 import boloAzul from "./imports/IMG_7343.jpeg";
 import { supabase } from "./lib/supabase";
 
-const WHATSAPP_NUMBER = "5521972347730";
+const WHATSAPP_NUMBER = "5521966836434";
 
 type Option = { name: string; price?: number; soldOut?: boolean };
 type AddOn = { name: string; price: number };
@@ -863,7 +863,7 @@ function clearPendingOrder() {
 }
 
 function createPixPayload(amount: number, orderId: number) {
-  const pixKey = "+5521972347730";
+  const pixKey = "+5521966836434";
 
 
   const merchantAccountInformation =
@@ -1344,7 +1344,7 @@ Aguardo a confirmação da disponibilidade${
               ) : (
                 <div className="mt-5">
                   <div className="rounded-2xl bg-[#FFF8E7] p-4 text-xs leading-relaxed text-[#7A641E]">
-                    <strong>Chave Pix:</strong> +55 21 97234-7730
+                    <strong>Chave Pix:</strong> +55 21 966836434
                     <br />
                     O valor exato é {money(pixPayment.total)}.
                     <br />

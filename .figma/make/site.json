@@ -1,0 +1,11 @@
+{
+  "title": "Maré de Doçuras",
+  "description": "This web application streamlines task management for teams, enabling efficient collaboration, tracking progress, and enhancing productivity.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
